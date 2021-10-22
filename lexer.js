@@ -57,6 +57,15 @@ function* lexer(input = "") {
 		}
 	}
 
+	function recordCursor(tCursor) {
+		tCursor.pos = cursor.pos;
+		tCursor.char = cursor.char;
+		tCursor.line = cursor.line;
+		tCursor.column = cursor.column;
+		tCursor.eof = cursor.eof;
+		return true;
+	}
+
 	function skipIgnore() {
 		while (cursor.char === ' '
 			|| cursor.char === '\n'
@@ -64,7 +73,7 @@ function* lexer(input = "") {
 
 		if (cursor.char === '#') {
 			const line = cursor.line;
-			while (cursor.line === line) walkCursor();
+			while (!cursor.eof && cursor.line === line) walkCursor();
 		}
 	}
 
@@ -140,6 +149,32 @@ function* lexer(input = "") {
 		return null;
 	}
 
+	function matchScope(mOpen, mClose) {
+		skipIgnore();
+		const prevCursor = { ...cursor };
+		let lvl = 1;
+		while (!cursor.eof) {
+			let resOpen = match(mOpen);
+			let resClose = match(mClose);
+			if (resOpen) {
+				lvl++;
+			} else if (resClose) {
+				lvl--;
+				if (lvl <= 0) {
+					return {
+						...resClose,
+						range: [prevCursor, { ...cursor }]
+					}
+				}
+			}
+			else {
+				walkCursor();
+			}
+		}
+		moveCursor(prevCursor.pos);
+		return null;
+	}
+
 	function matchMultiple(m) {
 		skipIgnore();
 		let ret = {};
@@ -157,7 +192,7 @@ function* lexer(input = "") {
 		throw new GDXError(msg, cursor);
 	}
 
-	function expect(m, msg) {
+	function expectToken(m, msg) {
 		skipIgnore();
 		const res = m();
 		if (res) {
@@ -166,11 +201,21 @@ function* lexer(input = "") {
 		err(cursor, `Unexpected token '${cursor.char}' ${msg}`);
 	}
 
+	function expect(m, msg, tCursor) {
+		skipIgnore();
+		const res = m();
+		if (res) {
+			return res;
+		}
+		err(tCursor, msg);
+	}
+
 	function gdxBlock() {
+		let tc = { ...cursor };
 		let block = match(() => {
-			return match("(") && match("<") && matchUntil(() => {
-				return match(">") && match(")")
-			});
+			return match("(") && match("<") && expect(() => matchUntil(() => {
+				return recordCursor(tc) && match(">") && match(")")
+			}), "Need to close gdx block", tc);
 		});
 
 		if (block) {
@@ -197,7 +242,7 @@ function* lexer(input = "") {
 	function tag() {
 		let start;
 		let symb;
-		const block = expect(() => {
+		const block = expectToken(() => {
 			return ((start = match("</")) && (symb = match(T_SYMBOL)))
 				|| ((start = match("<")) && (symb = match(T_SYMBOL)))
 		}, "expected '<' or '</'");
@@ -205,7 +250,7 @@ function* lexer(input = "") {
 			let props = tagProps();
 			let end;
 
-			if (end = expect(() => match("/>") || match(">"), "expected '/>' or '>'")) {
+			if (end = expectToken(() => match("/>") || match(">"), "expected '/>' or '>'")) {
 				let startStr = start.res;
 				let endStr = end.res;
 				return {
@@ -236,11 +281,12 @@ function* lexer(input = "") {
 		if (match(() => {
 			return (member = match(T_SYMBOL)) && match("=") && (value = match(T_VALUE))
 		})) {
+			const valueRange = value.res.range;
 			let memberStr = input.slice(
 				member.range[0].pos, member.range[1].pos + 1
 			);
 			let valueStr = input.slice(
-				value.range[0].pos, value.range[1].pos + 1
+				valueRange[0].pos, valueRange[1].pos + 1
 			);
 			return {
 				[memberStr]: valueStr
@@ -254,18 +300,17 @@ function* lexer(input = "") {
 	}
 
 	function T_SYMBOL() {
-		let start = cursor;
-		return match(/(_|[a-z]|[A-Z])(_|[a-z]|[A-Z]|[0-9])*/g);
+		const m = match(/(_|[a-z]|[A-Z])(_|[a-z]|[A-Z]|[0-9])*/g);
+		if (m) {
+			return {
+				...m,
+				valueRange: m.range
+			}
+		}
 	}
 
 	function T_LITERAL() {
-		let any = T_STRING() || T_FLOAT() || T_INT();
-		if (any) {
-			return {
-				"type": "LITERAL",
-				"res": any.res
-			}
-		}
+		return T_STRING() || T_FLOAT() || T_INT();
 	}
 
 	function T_INT() {
@@ -274,8 +319,8 @@ function* lexer(input = "") {
 			|| match(/[+-]?[0-9]+/g);
 		if (m) {
 			return {
-				"type": "INT",
-				"res": m.res
+				...m,
+				valueRange: m.range
 			}
 		}
 	}
@@ -286,8 +331,8 @@ function* lexer(input = "") {
 			|| match(/[+-]?[0-9]+/g);
 		if (m) {
 			return {
-				"type": "FLOAT",
-				"res": m.res
+				...m,
+				valueRange: m.range
 			}
 		}
 	}
@@ -296,36 +341,49 @@ function* lexer(input = "") {
 		const m = match(/\".*?\"|\'.*?\'/g);
 		if (m) {
 			return {
-				"type": "STRING",
-				"res": m.res
+				...m,
+				valueRange: m.range
 			}
 		}
 	}
 
 	function T_FUNCCALL() {
-		return match(() => (
+		const block = match(() => (
 			match(T_SYMBOL) && match("(") && matchOptional(T_VALUE) && matchMultiple(() => (
 				match(",") && match(T_VALUE)
-			)) && expect(() => match(")"), "expected ')'")
+			)) && expectToken(() => match(")"), "expected ')'")
 		));
+		if (block) {
+			return {
+				...block,
+				valueRange: block.range
+			}
+		}
 	}
 
 	function T_GDBLOCK() {
-		return match(() => match("{") && matchUntil("}"));
+		const block = match(() => match("{") && matchScope("{", "}"));
+		if (block) {
+			walkCursor(false, block.range[0]);
+			walkCursor(true, block.range[1]);
+			return {
+				...block,
+				valueRange: block.range
+			};
+		}
 	}
 
 	while (true) {
 		const token = gdxBlock();
 		if (token) yield token;
 		else walkCursor();
-		if (cursor.eof) yield { type: "EOF" }
+		if (cursor.eof) { yield { type: "EOF" } }
 	}
 }
 
 function parse(input = "") {
 	// Convert possible line breaks into single line break
 	input = input.replace(/\r?\n|\r/g, "\n");
-	//console.log(input);
 
 	for (const token of lexer(input)) {
 		if (token.type === "EOF") break;
@@ -333,7 +391,7 @@ function parse(input = "") {
 			const numTags = token.tags.length;
 			const tags = token.tags;
 
-			function tagEnd(start, name, scopeEnd = -1) {
+			function findTagEnd(start, name, scopeEnd = -1) {
 				if (tags[start].tagType === 'SINGLE') return start;
 				let indent = 0;
 				if (scopeEnd < 0) {
@@ -352,16 +410,37 @@ function parse(input = "") {
 				return -1;
 			}
 
-			function parseTag(tagStart, tagEnd) {
-				if (tagEnd == -1) {
-					throw new GDXError(`Couldn't find close tag`, tags[tagStart].range[0]);
+			function parseTag(start, end) {
+				if (end == -1) {
+					throw new GDXError(`Couldn't find close tag`, tags[start].range[0]);
 				}
-				const tag = tags[tagStart];
-				console.log(tag);
+				const tagStart = tags[start];
+
+				const tag = {
+					type: tagStart.tagName,
+					props: tagStart.props,
+					children: []
+				}
+
+				for (let i = start + 1; i <= end - 1; i++) {
+					if (tags[i].tagType === 'SINGLE') {
+						tag.children.push(parseTag(i, i));
+					} else if (tags[i].tagType === 'START') {
+						let otherEnd = findTagEnd(i, tags[i].tagName, end - 1);
+						tag.children.push(parseTag(i, otherEnd));
+						if (otherEnd !== -1) {
+							i = otherEnd;
+						}
+					} else if (tags[i].tagType === 'CLOSE') {
+						throw new GDXError(`This tag is closing nothing`, tags[i].range[0]);
+					}
+				}
+
+				return tag;
 			}
 
 			const start = 0;
-			const end = tagEnd(start, tags[0].tagName);
+			const end = findTagEnd(start, tags[0].tagName);
 			if (end !== numTags - 1) {
 				const after = tags[end + 1];
 				if (after.tagType === 'CLOSE') {
@@ -375,6 +454,7 @@ function parse(input = "") {
 				}
 			}
 			const dict = parseTag(0, end);
+			console.log(JSON.stringify(dict, " ", " "));
 		}
 	}
 }

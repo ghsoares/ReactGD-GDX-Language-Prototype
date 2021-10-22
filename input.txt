@@ -1,13 +1,12 @@
 (
 	<Label
 		text="something"
-		rect_size = Vector2(2,2)
+		rect_size = Vector2(32.0, 64.0)
 	>
-		<Label></Label>
+		<Label>
+			<Input>
+			</Input>
+		</Label>
 		<View />
 	</Label>
 )
-
-#(
-#	<Label/>
-#)
