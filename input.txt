@@ -1,0 +1,13 @@
+(
+	<Label
+		text="something"
+		rect_size = Vector2(2,2)
+	>
+		<Label></Label>
+		<View />
+	</Label>
+)
+
+#(
+#	<Label/>
+#)

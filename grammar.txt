@@ -1,0 +1,60 @@
+grammar ReactGD;
+
+// LEXER
+
+gdxBlock: '(' gdxBody ')';
+
+gdxBody: tag+;
+
+tag: tagStart | tagSingle | tagClose;
+
+tagStart: '<' SYMBOL propAssign* '>';
+
+tagSingle: '<' SYMBOL propAssign* '/>';
+
+tagClose: '</' SYMBOL '>';
+
+propAssign:
+	SYMBOL '=' (SYMBOL | LITERAL | FUNC_CALL | GD_BLOCK);
+
+// TOKENS
+
+SYMBOL: ('_' | [a-z] | [A-Z]) (
+		'_'
+		| [a-z]
+		| [A-Z]
+		| [0-9]
+	)*;
+
+LITERAL: INT | FLOAT | STRING;
+
+// INT LITERALS
+INT: [0-9]+ | INT_HEX | INT_BIN;
+
+INT_HEX: '0x' ([0-9] | [a-f] | [A-F])+;
+
+INT_BIN: '0b' [0-1]+;
+
+// FLOAT LITERALS
+FLOAT: ( ('+' | '-') [0-9]+ '.' [0-9]*) | FLOAT_EXP;
+
+FLOAT_EXP: ('+' | '-') [0-9]+ '.' [0-9]* 'e' ('+' | '-') [0-9]+;
+
+// STRING LITERALS
+STRING: ('"' .*? '"') | ('\'' .*? '\'');
+
+FUNC_CALL:
+	SYMBOL '(' (
+		(SYMBOL | LITERAL | FUNC_CALL) (
+			',' SYMBOL
+			| LITERAL
+			| FUNC_CALL
+		)*
+	)? ')';
+
+GD_BLOCK: '{' '}'*? '}';
+
+WS: (' ' | '\t' | '\n' | '\r') -> skip;
+
+COMMENT: '#' ~[\r\n]* -> skip;
+
