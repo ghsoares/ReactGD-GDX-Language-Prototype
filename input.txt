@@ -1,12 +1,8 @@
 (
-	<Label
-		text="something"
-		rect_size = Vector2(32.0, 64.0)
-	>
-		<Label>
-			<Input>
-			</Input>
-		</Label>
-		<View />
+	<Label>
+		<Input a=a/>
+		<Input/>
 	</Label>
 )
+
+(<Input/>)

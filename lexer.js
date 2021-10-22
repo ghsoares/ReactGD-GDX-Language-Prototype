@@ -267,10 +267,10 @@ function* lexer(input = "") {
 	}
 
 	function tagProps() {
-		let props = [];
+		let props = {};
 		let prop;
 		while (prop = propAssign()) {
-			props.push(prop);
+			props[prop[0]] = prop[1];
 		}
 		return props;
 	}
@@ -288,9 +288,7 @@ function* lexer(input = "") {
 			let valueStr = input.slice(
 				valueRange[0].pos, valueRange[1].pos + 1
 			);
-			return {
-				[memberStr]: valueStr
-			};
+			return [memberStr, valueStr]
 		}
 	}
 
@@ -300,7 +298,7 @@ function* lexer(input = "") {
 	}
 
 	function T_SYMBOL() {
-		const m = match(/(_|[a-z]|[A-Z])(_|[a-z]|[A-Z]|[0-9])*/g);
+		const m = match(/(_|[a-z]|[A-Z])(_|:|\.|[a-z]|[A-Z]|[0-9])*/g);
 		if (m) {
 			return {
 				...m,
@@ -377,13 +375,66 @@ function* lexer(input = "") {
 		const token = gdxBlock();
 		if (token) yield token;
 		else walkCursor();
+
 		if (cursor.eof) { yield { type: "EOF" } }
 	}
+}
+
+function stringify(json, space = " ", indentLvl = 0) {
+	let s = "";
+
+	if (Array.isArray(json)) {
+		const numElements = json.length;
+
+		if (numElements === 0) {
+			return "[]";
+		}
+
+		s += "[";
+
+		for (let i = 0; i < numElements; i++) {
+			const value = json[i];
+			if (typeof value === 'string') {
+				s += `${value}`;
+			} else if (typeof value === 'object') {
+				s += "\n" + space.repeat(indentLvl + 1);
+				s += stringify(value, space, indentLvl + 1);
+			}
+			if (i < numElements - 1) s += ",";
+		}
+
+		s += "\n" + space.repeat(indentLvl) + "]";
+	} else {
+		const numElements = Object.keys(json).length;
+		if (numElements === 0) {
+			return "{}";
+		}
+
+		s += "{";
+
+		let i = 0;
+		for (const k of Object.keys(json)) {
+			s += "\n" + space.repeat(indentLvl + 1) + `"${k}": `;
+			const value = json[k];
+			if (typeof value === 'string') {
+				s += `${value}`;
+			} else if (typeof value === 'object') {
+				s += stringify(value, space, indentLvl + 1);
+			}
+			if (i < numElements - 1) s += ",";
+			i += 1;
+		}
+
+		s += "\n" + space.repeat(indentLvl) + "}";
+	}
+
+	return s;
 }
 
 function parse(input = "") {
 	// Convert possible line breaks into single line break
 	input = input.replace(/\r?\n|\r/g, "\n");
+	let off = 0;
 
 	for (const token of lexer(input)) {
 		if (token.type === "EOF") break;
@@ -439,6 +490,10 @@ function parse(input = "") {
 				return tag;
 			}
 
+			if (numTags === 1 && tags[0].tagType === 'START') {
+				throw new GDXError(`Couldn't find close tag`, tags[0].range[0]);
+			}
+
 			const start = 0;
 			const end = findTagEnd(start, tags[0].tagName);
 			if (end !== numTags - 1) {
@@ -454,9 +509,20 @@ function parse(input = "") {
 				}
 			}
 			const dict = parseTag(0, end);
-			console.log(JSON.stringify(dict, " ", " "));
+			const dictStr = stringify(dict);
+
+			input = input.slice(0, off + token.range[0].pos) + dictStr +
+				input.slice(off + token.range[1].pos + 1);
+
+			const originalLength = token.range[1].pos - token.range[0].pos + 1;
+			const newLength = dictStr.length;
+			off += (newLength - originalLength);
 		}
 	}
+
+	console.log(input);
+
+	return input;
 }
 
 function test(input) {
