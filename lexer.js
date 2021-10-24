@@ -3,308 +3,374 @@ import fs from 'fs';
 class GDXError extends Error {
 	constructor(message, cursor = {}) {
 		super(`Parse error at line ${cursor.line + 1} column ${cursor.column + 1}: ${message}`);
-		this.cursor = cursor;
 	}
 }
 
-function* lexer(input = "") {
-	let cursor = {
+function createCursor(input) {
+	return {
+		input,
+		inputLength: input.length,
 		pos: 0,
 		char: input[0],
 		line: 0,
 		column: 0,
-		eof: false
+		eof: false,
+		lineBreak: false,
+		walk: function (back) {
+			if (back) {
+				this.pos--;
+				this.column--;
+				if (this.lineBreak) {
+					this.line--;
+					this.column = 0;
+					for (let i = this.pos - 1; i >= 0; i--) {
+						if (this.input[i] === '\n') break;
+						this.column++;
+					}
+				}
+			} else {
+				this.pos++;
+				this.column++;
+				if (this.lineBreak) {
+					this.line++;
+					this.column = 0;
+				}
+			}
+
+			this.char = this.input[this.pos];
+			this.eof = this.char === undefined;
+			this.lineBreak = this.char === '\n';
+			return this;
+		},
+		walkTimes: function (times, back) {
+			for (let i = 0; i < times; i++) {
+				this.walk(back);
+			}
+			return this;
+		},
+		move: function (pos) {
+			if (pos < 0) pos = 0;
+			if (pos > this.inputLength - 1) pos = this.inputLength - 1;
+			if (pos === this.pos) return;
+
+			this.pos = 0;
+			this.char = input[0];
+			this.line = 0;
+			this.column = 0;
+			this.eof = false;
+			this.lineBreak = input[0] === '\n';
+
+			while (this.pos < pos) this.walk();
+
+			return this;
+		},
+		skipIgnore: function () {
+			while (this.char === ' '
+				|| this.char === '\n'
+				|| this.char === '\t') this.walk();
+		},
+		toString: function () {
+			return `(P:${this.pos} L:${this.line} C:${this.column} "${this.char}")`;
+		}
 	};
+}
 
-	function walkCursor(back = false, tCursor = cursor) {
-		if (!back) {
-			tCursor.pos++;
-			tCursor.column++;
-			while ((input[tCursor.pos] === '\n') && input[tCursor.pos]) {
-				tCursor.pos++;
-				tCursor.line++;
-				tCursor.column = 0;
+function* parse(input = "") {
+	let cursor = createCursor(input);
+	let matchStack = [];
+	let cursorStartStack = [];
+	let cursorEndStack = [];
+
+	// Helper methods
+	function log(msg) { console.log(msg); return true; }
+
+	function logMatchStack() { console.log(matchStack); return true; }
+
+	function logCursorStartStack() { console.log(cursorStartStack.map(val => val.toString())); return true; }
+
+	function logCursorEndStack() { console.log(cursorEndStack.map(val => val.toString())); return true; }
+
+	// Parser methods
+	function getStr(pos) {
+		if (matchStack.length === 0) return input;
+		while (pos < 0) {
+			pos += matchStack.length;
+		}
+		while (pos >= matchStack.length) {
+			pos -= matchStack.length;
+		}
+		return matchStack[pos];
+	}
+
+	function getCursorStart(pos) {
+		if (cursorStartStack.length === 0) return createCursor(input);
+		while (pos < 0) {
+			pos += cursorStartStack.length;
+		}
+		while (pos >= cursorStartStack.length) {
+			pos -= cursorStartStack.length;
+		}
+		return cursorStartStack[pos];
+	}
+
+	function getCursorEnd(pos) {
+		if (cursorEndStack.length === 0) return createCursor(input);
+		while (pos < 0) {
+			pos += cursorEndStack.length;
+		}
+		while (pos >= cursorEndStack.length) {
+			pos -= cursorEndStack.length;
+		}
+		return cursorEndStack[pos];
+	}
+
+	function setStr(pos, str) {
+		if (matchStack.length === 0) return input;
+		while (pos < 0) {
+			pos += matchStack.length;
+		}
+		while (pos >= matchStack.length) {
+			pos -= matchStack.length;
+		}
+		matchStack[pos] = str;
+	}
+
+	function match(str, ...args) {
+		cursor.skipIgnore();
+
+		if (typeof str === 'string') {
+			if (input.slice(cursor.pos, cursor.pos + str.length) === str) {
+				matchStack.push(str);
+				cursorStartStack.push({ ...cursor });
+				cursor.walkTimes(str.length);
+				cursorEndStack.push({ ...cursor });
+				return true;
 			}
-		} else {
-			tCursor.pos--;
-			tCursor.column--;
-			while ((input[tCursor.pos] === '\n') && input[tCursor.pos]) {
-				tCursor.pos--;
-				tCursor.line--;
-				tCursor.column = 0;
-				for (let i = tCursor.pos - 1; i >= 0; i--) {
-					if (input[i] === '\n') break;
-					tCursor.column++;
+		} else if (typeof str === 'function') {
+			let tCursor = { ...cursor };
+			let mPos = matchStack.length;
+			if (str()) {
+				if (args[0] === true) {
+					matchStack.push(input.slice(tCursor.pos, cursor.pos));
+				} else {
+					matchStack.push(matchStack.slice(mPos).join(""));
 				}
+				cursorStartStack.push(tCursor);
+				cursorEndStack.push({ ...cursor });
+				return true;
+			} else {
+				matchStack = matchStack.slice(0, mPos);
+				cursorStartStack = cursorStartStack.slice(0, mPos);
+				cursorEndStack = cursorEndStack.slice(0, mPos);
+				cursor.move(tCursor.pos);
+			}
+		} else if (str instanceof RegExp) {
+			let m = str.exec(input.slice(cursor.pos));
+			if (m && m.index === 0) {
+				matchStack.push(m[0]);
+				cursorStartStack.push({ ...cursor });
+				cursor.walkTimes(m[0].length);
+				cursorEndStack.push({ ...cursor });
+				return true;
 			}
 		}
-		tCursor.char = input[tCursor.pos];
-		tCursor.eof = !tCursor.char;
+
+		return false;
 	}
 
-	function moveCursor(toPos, tCursor = cursor) {
-		if (toPos === tCursor.pos) return;
-
-		var back = (toPos - tCursor.pos) < 0;
-		if (!back) {
-			while (tCursor.pos < toPos) {
-				walkCursor(false, tCursor);
-			}
-		} else {
-			while (tCursor.pos > toPos) {
-				walkCursor(true, tCursor);
-			}
-		}
-	}
-
-	function recordCursor(tCursor) {
-		tCursor.pos = cursor.pos;
-		tCursor.char = cursor.char;
-		tCursor.line = cursor.line;
-		tCursor.column = cursor.column;
-		tCursor.eof = cursor.eof;
-		return true;
-	}
-
-	function skipIgnore() {
-		while (cursor.char === ' '
-			|| cursor.char === '\n'
-			|| cursor.char === '\t') walkCursor();
-
-		if (cursor.char === '#') {
-			const line = cursor.line;
-			while (!cursor.eof && cursor.line === line) walkCursor();
-		}
-	}
-
-	function match(m) {
-		skipIgnore();
-		const prevCursor = { ...cursor };
-		switch (typeof m) {
-			case 'function': {
-				const res = m();
-				if (res) {
-					walkCursor(true);
-					const endCursor = { ...cursor };
-					walkCursor(false);
-					return {
-						range: [prevCursor, endCursor],
-						res
-					};
-				}
-				break;
-			}
-			case 'string': {
-				if (input.slice(cursor.pos, cursor.pos + m.length) === m) {
-					moveCursor(cursor.pos + m.length - 1);
-					const endCursor = { ...cursor };
-					walkCursor(false);
-					return {
-						range: [prevCursor, endCursor],
-						res: m
-					};
-				}
-				break;
-			}
-			default: {
-				if (m instanceof RegExp) {
-					const match = m.exec(input.slice(cursor.pos));
-					if (match && match.index === 0) {
-						moveCursor(cursor.pos + m.lastIndex - 1);
-						const endCursor = { ...cursor };
-						walkCursor(false);
-						return {
-							range: [prevCursor, endCursor],
-							res: match[0]
-						};
-					}
-				}
-			}
-		}
-		moveCursor(prevCursor.pos);
-		return null;
-	}
-
-	function matchOptional(m) {
-		let res = m();
-		return res || true;
-	}
-
-	function matchUntil(m) {
-		skipIgnore();
-		const prevCursor = { ...cursor };
+	function matchUntil(str) {
 		while (!cursor.eof) {
-			let res = match(m);
-			if (res) {
-				return {
-					...res,
-					range: [prevCursor, { ...cursor }]
-				}
-			}
-			else {
-				walkCursor();
-			}
+			if (match(str)) {
+				return true;
+			} else cursor.walk();
 		}
-		moveCursor(prevCursor.pos);
-		return null;
+
+		return false;
 	}
 
-	function matchScope(mOpen, mClose) {
-		skipIgnore();
-		const prevCursor = { ...cursor };
-		let lvl = 1;
+	function matchScope(strOpen, strClose) {
+		if (!match(strOpen)) return;
+		let lvl = 0;
 		while (!cursor.eof) {
-			let resOpen = match(mOpen);
-			let resClose = match(mClose);
-			if (resOpen) {
-				lvl++;
-			} else if (resClose) {
+			if (match(strOpen)) lvl++;
+			else if (match(strClose)) {
 				lvl--;
-				if (lvl <= 0) {
-					return {
-						...resClose,
-						range: [prevCursor, { ...cursor }]
+				if (lvl < 0) {
+					return true;
+				}
+			} else cursor.walk()
+		}
+		return false;
+	}
+
+	function expect(str, msg = "") {
+		if (match(str)) {
+			return true;
+		}
+		if (typeof msg === 'string') {
+			throw new GDXError(msg, cursor);
+		} else if (typeof msg === 'function') {
+			throw new GDXError(msg(), cursor);
+		}
+	}
+
+	// Lexer
+	function gdxBlock() {
+		let cStart;
+		let cEnd;
+		const foundBlock = match(() => {
+			return match(T_GDX_BLOCK_START) && (cStart = getCursorStart(-1)) &&
+				expect(() => matchUntil(() => {
+					return match(T_GDX_BLOCK_END) && (cEnd = getCursorEnd(-1));
+				}));
+		});
+		if (foundBlock) {
+			cursor.move(cStart.pos + 1);
+
+			const body = gdxBody(cEnd.pos - 1);
+
+			cursor.move(cEnd.pos - 1);
+
+			return body;
+		}
+	}
+
+	function gdxBody(end) {
+		let body = {};
+		let tagStack = [];
+
+		while (!cursor.eof && cursor.pos < end) {
+			let thisTag = tag();
+			switch (thisTag.type) {
+				case "OPEN": {
+					if (tagStack.length === 0) {
+						if (Object.keys(body).length > 0) {
+							throw new GDXError(`Can only return one node`, thisTag.cursor);
+						}
+					}
+					thisTag.children = [];
+					tagStack.push(thisTag);
+					break;
+				}
+				case "SINGLE": {
+					if (tagStack.length === 0) {
+						if (Object.keys(body).length > 0) {
+							throw new GDXError(`Can only return one node`, thisTag.cursor);
+						}
+						body = thisTag;
+					} else {
+						tagStack[tagStack.length - 1].children.push(thisTag);
+					}
+				}
+				case "CLOSE": {
+					if (tagStack.length === 0) {
+						throw new GDXError(`Can only return one node`, thisTag.cursor);
+					}
+					let parentTag = tagStack.pop();
+					if (parentTag.className === thisTag.className) {
+						if (tagStack.length === 0) {
+							body = parentTag;
+						} else {
+							tagStack[tagStack.length - 1].children.push(parentTag);
+						}
+					} else {
+						throw new GDXError(`This tag is not matching opening tag "${parentTag.className}"`, thisTag.cursor);
 					}
 				}
 			}
-			else {
-				walkCursor();
-			}
-		}
-		moveCursor(prevCursor.pos);
-		return null;
-	}
 
-	function matchMultiple(m) {
-		skipIgnore();
-		let ret = {};
-		while (!cursor.eof) {
-			let res = match(m);
-			if (res) {
-				ret = { ...ret, ...res };
-			} else break;
+			cursor.skipIgnore();
 		}
 
-		return ret;
-	}
-
-	function err(cursor, msg) {
-		throw new GDXError(msg, cursor);
-	}
-
-	function expectToken(m, msg) {
-		skipIgnore();
-		const res = m();
-		if (res) {
-			return res;
+		if (tagStack.length > 0) {
+			throw new GDXError(`Couldn't find closing tag`, tagStack[tagStack.length - 1].cursor);
 		}
-		err(cursor, `Unexpected token '${cursor.char}' ${msg}`);
-	}
 
-	function expect(m, msg, tCursor) {
-		skipIgnore();
-		const res = m();
-		if (res) {
-			return res;
-		}
-		err(tCursor, msg);
-	}
-
-	function gdxBlock() {
-		let tc = { ...cursor };
-		let block = match(() => {
-			return match("(") && match("<") && expect(() => matchUntil(() => {
-				return recordCursor(tc) && match(">") && match(")")
-			}), "Need to close gdx block", tc);
-		});
-
-		if (block) {
-			const prevCursor = { ...cursor };
-			moveCursor(block.range[0].pos);
-			walkCursor();
-
-			const gdxBlock = {
-				type: "GDXBLOCK",
-				range: block.range,
-				tags: []
+		function convertTag(tag) {
+			let converted = {
+				className: tag.className,
+				properties: tag.properties,
+				children: tag.children
 			};
-			while (!cursor.eof && cursor.pos <= block.range[1].pos - 1) {
-				const t = tag();
-				gdxBlock.tags.push(t);
-				skipIgnore();
-			}
-			moveCursor(prevCursor.pos);
-			cursor = prevCursor;
-			return gdxBlock;
+
+			converted.children = converted.children.map(t => convertTag(t));
+
+			return converted;
 		}
+
+		return convertTag(body);
 	}
 
 	function tag() {
-		let start;
-		let symb;
-		const block = expectToken(() => {
-			return ((start = match("</")) && (symb = match(T_SYMBOL)))
-				|| ((start = match("<")) && (symb = match(T_SYMBOL)))
-		}, "expected '<' or '</'");
-		if (block) {
-			let props = tagProps();
-			let end;
+		expect(() => match("</") || match("<"), `Expected "<" or "</`);
+		const tagStart = getStr(-1);
+		const cursorTagStart = getCursorStart(-1);
+		expect(T_SYMBOL, "Expected tag class name");
+		const className = getStr(-1);
+		const properties = tagProperties();
+		const cursorPropertiesStart = getCursorStart(-1);
+		expect(() => match("/>") || match(">"), `Expected ">" or "/>`);
+		const tagEnd = getStr(-1);
+		const cursorTagEnd = getCursorStart(-1);
 
-			if (end = expectToken(() => match("/>") || match(">"), "expected '/>' or '>'")) {
-				let startStr = start.res;
-				let endStr = end.res;
-				return {
-					tagName: symb.res.res,
-					tagType: (
-						startStr == "<" ?
-							(endStr == ">" ? "START" : "SINGLE") : "CLOSE"
-					),
-					range: [start.range[0], end.range[1]],
-					props
-				};
+		let type;
+		if (tagStart === "<") {
+			if (tagEnd === ">") {
+				type = "OPEN";
+			} else if (tagEnd === "/>") {
+				type = "SINGLE";
+			}
+		} else if (tagStart === "</") {
+			if (tagEnd === ">") {
+				type = "CLOSE";
+			} else if (tagStart === "/>") {
+				throw new GDXError(`Can't close with "/>"`, cursorTagEnd);
 			}
 		}
+		if (type === "CLOSE" && Object.keys(properties).length > 0) {
+			throw new GDXError(`Can't assign properties to close tag`, cursorPropertiesStart);
+		}
+
+		return {
+			type,
+			className,
+			properties,
+			cursor: cursorTagStart
+		};
 	}
 
-	function tagProps() {
-		let props = {};
-		let prop;
-		while (prop = propAssign()) {
-			props[prop[0]] = prop[1];
+	function tagProperties() {
+		const props = {};
+
+		while (!cursor.eof) {
+			let propName;
+			let propValue;
+			if (match(() => {
+				return T_SYMBOL() && (propName = getStr(-1)) && match("=")
+					&& T_VALUE() && (propValue = getStr(-1))
+			})) {
+				props[propName] = propValue;
+			} else break;
 		}
+
 		return props;
 	}
 
-	function propAssign() {
-		let member;
-		let value;
-		if (match(() => {
-			return (member = match(T_SYMBOL)) && match("=") && (value = match(T_VALUE))
-		})) {
-			const valueRange = value.res.range;
-			let memberStr = input.slice(
-				member.range[0].pos, member.range[1].pos + 1
-			);
-			let valueStr = input.slice(
-				valueRange[0].pos, valueRange[1].pos + 1
-			);
-			return [memberStr, valueStr]
-		}
+	// Tokens
+	function T_GDX_BLOCK_START() {
+		return match("(") && match("<");
 	}
 
-	// Tokens
+	function T_GDX_BLOCK_END() {
+		return match(">") && match(")");
+	}
+
 	function T_VALUE() {
-		return T_GDBLOCK() || T_FUNCCALL() || T_LITERAL() || T_SYMBOL();
+		return T_GDBLOCK() || T_FUNCTION() || T_LITERAL() || T_SYMBOL();
 	}
 
 	function T_SYMBOL() {
-		const m = match(/(_|[a-z]|[A-Z])(_|:|\.|[a-z]|[A-Z]|[0-9])*/g);
-		if (m) {
-			return {
-				...m,
-				valueRange: m.range
-			}
-		}
+		return match(/(_|[a-z]|[A-Z])(_|[a-z]|[A-Z]|[0-9])*/g);
 	}
 
 	function T_LITERAL() {
@@ -312,224 +378,66 @@ function* lexer(input = "") {
 	}
 
 	function T_INT() {
-		const m = match(/[+-]?0x([0-9]|[a-f]|[A-F])+/g)
+		return match(/[+-]?0x([0-9]|[a-f]|[A-F])+/g)
 			|| match(/[+-]?0b[01]+/g)
 			|| match(/[+-]?[0-9]+/g);
-		if (m) {
-			return {
-				...m,
-				valueRange: m.range
-			}
-		}
 	}
 
 	function T_FLOAT() {
-		const m = match(/[+-]?[0-9]+\.[0-9]*e[+-]?[0-9]+/g)
+		return match(/[+-]?[0-9]+\.[0-9]*e[+-]?[0-9]+/g)
 			|| match(/[+-]?[0-9]+\.[0-9]*[fF]?/g)
 			|| match(/[+-]?[0-9]+/g);
-		if (m) {
-			return {
-				...m,
-				valueRange: m.range
-			}
-		}
 	}
 
 	function T_STRING() {
-		const m = match(/\".*?\"|\'.*?\'/g);
-		if (m) {
-			return {
-				...m,
-				valueRange: m.range
-			}
-		}
-	}
-
-	function T_FUNCCALL() {
-		const block = match(() => (
-			match(T_SYMBOL) && match("(") && matchOptional(T_VALUE) && matchMultiple(() => (
-				match(",") && match(T_VALUE)
-			)) && expectToken(() => match(")"), "expected ')'")
-		));
-		if (block) {
-			return {
-				...block,
-				valueRange: block.range
-			}
-		}
+		return match(/\".*?\"|\'.*?\'/g);
 	}
 
 	function T_GDBLOCK() {
-		const block = match(() => match("{") && matchScope("{", "}"));
-		if (block) {
-			walkCursor(false, block.range[0]);
-			walkCursor(true, block.range[1]);
-			return {
-				...block,
-				valueRange: block.range
-			};
+		let mPos = matchStack.length;
+		const foundBlock = match(() => matchScope("{", "}"));
+		if (foundBlock) {
+			setStr(-1, input.slice(
+				getCursorStart(mPos).pos + 1, getCursorEnd(-1).pos - 1
+			));
+			return true;
 		}
 	}
 
-	while (true) {
-		const token = gdxBlock();
-		if (token) yield token;
-		else walkCursor();
-
-		if (cursor.eof) { yield { type: "EOF" } }
-	}
-}
-
-function stringify(json, space = " ", indentLvl = 0) {
-	let s = "";
-
-	if (Array.isArray(json)) {
-		const numElements = json.length;
-
-		if (numElements === 0) {
-			return "[]";
-		}
-
-		s += "[";
-
-		for (let i = 0; i < numElements; i++) {
-			const value = json[i];
-			if (typeof value === 'string') {
-				s += `${value}`;
-			} else if (typeof value === 'object') {
-				s += "\n" + space.repeat(indentLvl + 1);
-				s += stringify(value, space, indentLvl + 1);
-			}
-			if (i < numElements - 1) s += ",";
-		}
-
-		s += "\n" + space.repeat(indentLvl) + "]";
-	} else {
-		const numElements = Object.keys(json).length;
-		if (numElements === 0) {
-			return "{}";
-		}
-
-		s += "{";
-
-		let i = 0;
-		for (const k of Object.keys(json)) {
-			s += "\n" + space.repeat(indentLvl + 1) + `"${k}": `;
-			const value = json[k];
-			if (typeof value === 'string') {
-				s += `${value}`;
-			} else if (typeof value === 'object') {
-				s += stringify(value, space, indentLvl + 1);
-			}
-			if (i < numElements - 1) s += ",";
-			i += 1;
-		}
-
-		s += "\n" + space.repeat(indentLvl) + "}";
+	function T_FUNCTION() {
+		return match(() => {
+			return T_SYMBOL() && match("(")
+				&& T_FUNCTION_BODY()
+				&& expect(")", `Expected ")"`)
+		}, true);
 	}
 
-	return s;
-}
-
-function parse(input = "") {
-	// Convert possible line breaks into single line break
-	input = input.replace(/\r?\n|\r/g, "\n");
-	let off = 0;
-
-	for (const token of lexer(input)) {
-		if (token.type === "EOF") break;
-		if (token.type === "GDXBLOCK") {
-			const numTags = token.tags.length;
-			const tags = token.tags;
-
-			function findTagEnd(start, name, scopeEnd = -1) {
-				if (tags[start].tagType === 'SINGLE') return start;
-				let indent = 0;
-				if (scopeEnd < 0) {
-					scopeEnd = numTags - 1;
-				}
-				for (let i = start + 1; i <= scopeEnd; i++) {
-					if (tags[i].tagName === name) {
-						if (tags[i].tagType === 'START') {
-							indent++;
-						} else if (tags[i].tagType === 'CLOSE') {
-							indent--;
-							if (indent < 0) return i;
-						}
-					}
-				}
-				return -1;
+	function T_FUNCTION_BODY() {
+		if (T_VALUE()) {
+			while (!cursor.eof) {
+				if (!match(() => match(",") && T_VALUE())) break;
 			}
-
-			function parseTag(start, end) {
-				if (end == -1) {
-					throw new GDXError(`Couldn't find close tag`, tags[start].range[0]);
-				}
-				const tagStart = tags[start];
-
-				const tag = {
-					type: tagStart.tagName,
-					props: tagStart.props,
-					children: []
-				}
-
-				for (let i = start + 1; i <= end - 1; i++) {
-					if (tags[i].tagType === 'SINGLE') {
-						tag.children.push(parseTag(i, i));
-					} else if (tags[i].tagType === 'START') {
-						let otherEnd = findTagEnd(i, tags[i].tagName, end - 1);
-						tag.children.push(parseTag(i, otherEnd));
-						if (otherEnd !== -1) {
-							i = otherEnd;
-						}
-					} else if (tags[i].tagType === 'CLOSE') {
-						throw new GDXError(`This tag is closing nothing`, tags[i].range[0]);
-					}
-				}
-
-				return tag;
-			}
-
-			if (numTags === 1 && tags[0].tagType === 'START') {
-				throw new GDXError(`Couldn't find close tag`, tags[0].range[0]);
-			}
-
-			const start = 0;
-			const end = findTagEnd(start, tags[0].tagName);
-			if (end !== numTags - 1) {
-				const after = tags[end + 1];
-				if (after.tagType === 'CLOSE') {
-					throw new GDXError(
-						`This tag is closing nothing`, after.range[0]
-					);
-				} else {
-					throw new GDXError(
-						`You can return only one node`, after.range[0]
-					);
-				}
-			}
-			const dict = parseTag(0, end);
-			const dictStr = stringify(dict);
-
-			input = input.slice(0, off + token.range[0].pos) + dictStr +
-				input.slice(off + token.range[1].pos + 1);
-
-			const originalLength = token.range[1].pos - token.range[0].pos + 1;
-			const newLength = dictStr.length;
-			off += (newLength - originalLength);
 		}
+		return true;
 	}
 
-	console.log(input);
-
-	return input;
+	while (!cursor.eof) {
+		const body = gdxBlock();
+		if (body) yield body;
+		else cursor.walk();
+	}
 }
 
 function test(input) {
+	// Convert possible line breaks into single line break
+	input = input.replace(/\r?\n|\r/g, "\n");
+
 	var start = Date.now();
 	console.log("--start--");
 
-	const parsed = parse(input);
+	for (const token of parse(input)) {
+		console.log(token);
+	}
 
 	console.log("--finish--");
 	var elapsed = Date.now() - start;
