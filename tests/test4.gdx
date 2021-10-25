@@ -155,8 +155,9 @@ func render():
 					font_normal_font = fonts.paragraph
 					style_normal = styles.paragraph
 				>
-					"""Bellow you can find buttons to access each demo
-					Hello!"""
+					"""Bellow you can find buttons to access each demo,
+					click on then to go to each one and then go back here
+					to go to other demos"""
 				</RichTextLabel>
 
 				<Control rect_min_size:y=8.0/>

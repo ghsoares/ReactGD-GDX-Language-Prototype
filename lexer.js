@@ -374,8 +374,8 @@ function* parse(input = "") {
 		function convertTag(tag) {
 			const key = tag.properties.key;
 			let id = randomId(
-					4, tag.cursor.line, tag.cursor.column,
-					tag.cursor.line, tag.cursor.column
+				4, tag.cursor.line, tag.cursor.column,
+				tag.cursor.line, tag.cursor.column
 			);
 			id = `"${id}"`;
 			if (key !== undefined) {
