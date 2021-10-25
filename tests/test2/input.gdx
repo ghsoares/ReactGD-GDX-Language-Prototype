@@ -1,0 +1,5 @@
+(
+	<Control>
+		<Label text="Hello World!"/>
+	</Control>
+)
