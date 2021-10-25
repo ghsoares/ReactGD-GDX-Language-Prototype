@@ -1,3 +1,4 @@
+import glob from 'glob';
 import fs from 'fs';
 import path from 'path';
 
@@ -241,7 +242,8 @@ function* parse(input = "") {
 
 			cursor.move(cEnd.pos - 1);
 
-			body.tokenType = "GDX"
+			body.tokenType = "GDX";
+			body.range = [cStart.pos, cEnd.pos];
 			return body;
 		}
 	}
@@ -424,7 +426,7 @@ function* parse(input = "") {
 	function T_STRING() {
 		if (match(/\"\"\"(.|\n)*\"\"\"/g)) {
 			let str = getStr(-1);
-			str = str.slice(2, str.length - 2).replace(/\t/g, "");
+			str = str.slice(2, str.length - 2).replace(/\t/g, "").replace(/\n/g, "\\n");
 			setStr(-1, str);
 			return true;
 		}
@@ -439,7 +441,7 @@ function* parse(input = "") {
 
 		return match(() => {
 			return any() && match(".") && expect(any, `Expected value`) &&
-						 matchWhile(() => match(".") && expect(any, `Expected value`))
+				matchWhile(() => match(".") && expect(any, `Expected value`))
 		}, true);
 	}
 
@@ -478,107 +480,111 @@ function* parse(input = "") {
 	}
 }
 
-function printTag(tag, indent = 0) {
-	let str = "";
+function stringify(json) {
+	let s = "";
 
-	let tagName = tag.className;
-	if (tag.properties.name !== undefined) {
-		tagName += ` (${tag.properties.name})`;
-	}
+	if (Array.isArray(json)) {
+		const n = json.length;
 
-	str += `${indent > 0 ? "|  ".repeat(indent) : ""}${tagName}`;
-	str += "\n";
-	for (let c of tag.children) {
-		str += printTag(c, indent + 1);
-	}
+		s += "[";
 
-	return str;
-}
+		for (let i = 0; i < n; i++) {
+			let val = json[i];
 
-function test(input, desiredTree) {
-	let start = Date.now();
+			if (typeof val === 'object') val = stringify(val);
 
-	input = input.replace(/\r?\n|\r/g, "\n");
+			s += `${val}`;
 
-	let output = [];
-
-	for (const token of parse(input)) {
-		if (token.tokenType === "GDX") {
-			let block = { ...token };
-			delete block.tokenType;
-			output.push(block);
+			if (i < n - 1) {
+				s += ",";
+			}
 		}
+
+		s += "]";
+	} else {
+		const keys = Object.keys(json);
+		const n = keys.length;
+
+		s += "{";
+
+		for (let i = 0; i < n; i++) {
+			const key = keys[i];
+			let val = json[key];
+
+			if (typeof val === 'object') val = stringify(val);
+			
+			s += `"${key}":${val}`;
+
+			if (i < n - 1) {
+				s += ",";
+			}
+		}
+
+		s += "}";
 	}
 
-	let desiredStr = JSON.stringify(desiredTree);
-	let outputStr = JSON.stringify(output);
-
-	console.log("Desired:\n");
-	console.log(desiredStr);
-	console.log("\nOutput:\n");
-	console.log(outputStr);
-
-	if (desiredStr === outputStr) {
-		return Date.now() - start;
-	}
-
-	return -1;
+	return s;
 }
 
-function listTests() {
-	const testsPath = 'tests';
-
-	fs.readdir(testsPath, 'utf8', (err, files) => {
-		if (err) console.error(err);
-
-		console.log("----Tests start----");
-
-		let numTests = files.length;
-		let testI = 0;
-		let success = 0;
-		let fail = 0;
-		let totalTime = 0;
-
-		console.log(`Number of tests: ${numTests}`);
+function compile() {
+	glob("**/*.gdx", function (err, files) {
+		if (err) {
+			console.error(err);
+			return;
+		}
 
 		files.forEach(file => {
-			const inputStr = fs.readFileSync(path.join(testsPath, file, "input.gdx"), 'utf8');
-			const desiredStr = fs.readFileSync(path.join(testsPath, file, "desired.json"), 'utf8');
-			const desiredJson = JSON.parse(desiredStr);
-			
-			console.log(`\nTest ${testI+1}/${numTests}\n`);
+			const folder = path.dirname(file);
+			const inputFileName = path.basename(file, '.gdx');
+			const outputPath = path.join(folder, inputFileName + ".gd");
+			let input = fs.readFileSync(file, 'utf8').replace(/\r?\n|\r/g, "\n");
+
+			let off = 0;
 
 			try {
-				let testTime = test(inputStr, desiredJson);
-				if (testTime >= 0) {
-					console.log(`\nSuccess`);
-					console.log(`Elapsed: ${testTime} ms`);
-					success++;
-					totalTime += testTime;
-				} else {
-					console.log(`\nFail`);
-					fail++;
+				for (const token of parse(input)) {
+					if (token.tokenType === "GDX") {
+						let block = { ...token };
+						let range = block.range;
+						delete block.tokenType;
+						delete block.range;
+
+						let prefix = input.slice(0, off + range[0]);
+						let parsedStr = stringify(block);
+						let suffix = input.slice(off + range[1]);
+
+						input = prefix + parsedStr + suffix;
+
+						const prevLen = (range[1] - range[0]);
+						const newLen = parsedStr.length;
+						const diff = newLen - prevLen;
+
+						off += diff;
+					}
 				}
+
+				fs.writeFileSync(outputPath, input, "utf8");
 			} catch (e) {
-				if (e instanceof GDXError) {
-					console.log(`\nFail with error: ${e.message}`);
-					fail++;
-				} else {
-					console.error(e);
-				}
+				console.error(e);
 			}
-
-			testI++;
 		});
+	});
+}
 
-		console.log(`\nSuccess: ${success} Fails: ${fail}`);
-		console.log(`Total elapsed: ${totalTime} ms`);
+function clear() {
+	glob("**/*.gd", function (err, files) {
+		if (err) {
+			console.error(err);
+			return;
+		}
 
-		console.log("----Tests end----");
+		files.forEach(file => {
+			fs.rmSync(file);
+		});
 	});
 }
 
 console.clear();
 
-listTests();
+//compile();
 

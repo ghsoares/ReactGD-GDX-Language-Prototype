@@ -1,0 +1,1 @@
+var label = {"className":Label,"properties":{},"children":[]} #asd
