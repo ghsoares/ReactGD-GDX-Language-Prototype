@@ -1,1 +1,1 @@
-var label = {"className":Label,"properties":{},"children":[]} #asd
+var label = {"id":"AAAB","className":Label,"properties":{},"children":[]}

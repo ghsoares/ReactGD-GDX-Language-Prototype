@@ -8,6 +8,31 @@ class GDXError extends Error {
 	}
 }
 
+function sfc32(a, b, c, d) {
+	return function () {
+		a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+		var t = (a + b) | 0;
+		a = b ^ b >>> 9;
+		b = c + (c << 3) | 0;
+		c = (c << 21 | c >>> 11);
+		d = d + 1 | 0;
+		t = t + d | 0;
+		c = c + t | 0;
+		return (t >>> 0) / 4294967296;
+	}
+}
+
+function randomId(length, seed0, seed1, seed2, seed3) {
+	var result = '';
+	var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+	var charactersLength = characters.length;
+	var rng = sfc32(seed0, seed1 || 1, seed2 || 2, seed3 || 3);
+	for (var i = 0; i < length; i++) {
+		result += characters.charAt(Math.floor(rng() * charactersLength));
+	}
+	return result;
+}
+
 function createCursor(input) {
 	return {
 		input,
@@ -67,6 +92,19 @@ function createCursor(input) {
 			return this;
 		},
 		skipIgnore: function () {
+			let foundComment = false;
+
+			while (this.char === ' '
+				|| this.char === '\n'
+				|| this.char === '\t') this.walk();
+
+			if (this.char === '#') {
+				while (!this.eof && this.char !== '\n') {
+					this.walk();
+				}
+				foundComment = true;
+			}
+
 			while (this.char === ' '
 				|| this.char === '\n'
 				|| this.char === '\t') this.walk();
@@ -314,12 +352,16 @@ function* parse(input = "") {
 
 		function convertTag(tag) {
 			let converted = {
+				id: '"' + randomId(
+					4, tag.cursor.line, tag.cursor.column,
+					tag.cursor.line, tag.cursor.column
+				) + '"',
 				className: tag.className,
 				properties: tag.properties,
 				children: tag.children
 			};
 
-			converted.children = converted.children.map(t => convertTag(t));
+			converted.children = converted.children.map((t, idx) => convertTag(t));
 
 			return converted;
 		}
@@ -512,7 +554,7 @@ function stringify(json) {
 			let val = json[key];
 
 			if (typeof val === 'object') val = stringify(val);
-			
+
 			s += `"${key}":${val}`;
 
 			if (i < n - 1) {
@@ -586,5 +628,5 @@ function clear() {
 
 console.clear();
 
-//compile();
-
+clear();
+compile();

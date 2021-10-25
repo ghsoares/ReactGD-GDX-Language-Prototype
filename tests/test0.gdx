@@ -1,1 +1,4 @@
-var label = (<Label/>) #asd
+var label = (
+	#Something
+	<Label/>
+)

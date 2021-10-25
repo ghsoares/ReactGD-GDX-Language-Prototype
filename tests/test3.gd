@@ -1,3 +1,3 @@
-{"className":Control,"properties":{},"children":[{"className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
+{"id":"AAAB","className":Control,"properties":{},"children":[{"id":"AAAC","className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
 
-{"className":HBoxContainer,"properties":{},"children":[{"className":VBoxContainer,"properties":{},"children":[{"className":PanelContainer,"properties":{"size_flags_horizontal":Control.SIZE_EXPAND_FILL},"children":[{"className":Label,"properties":{"text":"This text is parsed!"},"children":[]}]}]}]}
+{"id":"AABE","className":HBoxContainer,"properties":{},"children":[{"id":"AACF","className":VBoxContainer,"properties":{},"children":[{"id":"AACH","className":PanelContainer,"properties":{"size_flags_horizontal":Control.SIZE_EXPAND_FILL},"children":[{"id":"AACI","className":Label,"properties":{"text":"This text is parsed!"},"children":[]}]}]}]}

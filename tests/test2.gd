@@ -1,1 +1,1 @@
-{"className":Control,"properties":{},"children":[{"className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
+{"id":"AAAB","className":Control,"properties":{},"children":[{"id":"AAAC","className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
