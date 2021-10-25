@@ -496,7 +496,9 @@ function* parse(input = "") {
 	function T_STRING() {
 		if (match(/\"\"\"(.|\n)*\"\"\"/g)) {
 			let str = getStr(-1);
-			str = str.slice(2, str.length - 2).replace(/\t/g, "").replace(/\n/g, "\\n");
+			str = str.slice(2, str.length - 2).replace(/\t/g, "");
+			str = str.replace(/\n/g, " ");
+			str = str.replace(/ +/g, " ");
 			setStr(-1, str);
 			return true;
 		}
@@ -615,7 +617,7 @@ function compile() {
 				for (const token of parse(input)) {
 					if (token.tokenType === "GDX") {
 						let block = { ...token };
-						let range = block.range;
+						const range = block.range;
 						delete block.tokenType;
 						delete block.range;
 
