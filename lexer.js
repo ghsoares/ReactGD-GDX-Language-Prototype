@@ -263,7 +263,28 @@ function* parse(input = "") {
 		}
 	}
 
-	// Lexer
+	// Import Lexer
+	function importStatement() {
+		if (match("import")) {
+			const start = getCursorStart(-1);
+			expect(T_SYMBOL, "Expected name of the imported component");
+			const className = getStr(-1);
+			expect("from", `Expected token "from"`);
+			expect(T_STRING, "Expected path string");
+			const relativePath = getStr(-1);
+			const end = getCursorEnd(-1);
+
+			return {
+				tokenType: "IMPORT",
+				className,
+				relativePath: relativePath.slice(1, relativePath.length - 1),
+				range: [start.pos, end.pos]
+			}
+		}
+		return false;
+	}
+
+	// GDX Lexer
 	function gdxBlock() {
 		let cStart;
 		let cEnd;
