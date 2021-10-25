@@ -351,11 +351,18 @@ function* parse(input = "") {
 		}
 
 		function convertTag(tag) {
-			let converted = {
-				id: '"' + randomId(
+			const key = tag.properties.key;
+			let id = randomId(
 					4, tag.cursor.line, tag.cursor.column,
 					tag.cursor.line, tag.cursor.column
-				) + '"',
+			);
+			id = `"${id}"`;
+			if (key !== undefined) {
+				id += `+str(${key})`;
+			}
+
+			let converted = {
+				id,
 				className: tag.className,
 				properties: tag.properties,
 				children: tag.children
