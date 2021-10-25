@@ -546,7 +546,7 @@ function* parse(input = "") {
 	}
 
 	while (!cursor.eof) {
-		const body = gdxBlock();
+		const body = gdxBlock() || importStatement();
 		if (body) yield body;
 		else cursor.walk();
 	}
@@ -623,6 +623,22 @@ function compile() {
 
 						let prefix = input.slice(0, off + range[0]);
 						let parsedStr = stringify(block);
+						let suffix = input.slice(off + range[1]);
+
+						input = prefix + parsedStr + suffix;
+
+						const prevLen = (range[1] - range[0]);
+						const newLen = parsedStr.length;
+						const diff = newLen - prevLen;
+
+						off += diff;
+					} else if (token.tokenType === "IMPORT") {
+						const className = token.className;
+						const p = path.join(folder, token.relativePath);
+						const range = token.range;
+
+						let prefix = input.slice(0, off + range[0]);
+						let parsedStr = `var ${className} = ResourceLoader.load("${p}")`;
 						let suffix = input.slice(off + range[1]);
 
 						input = prefix + parsedStr + suffix;
