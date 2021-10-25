@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 
 class GDXError extends Error {
 	constructor(message, cursor = {}) {
@@ -151,7 +152,7 @@ function* parse(input = "") {
 			let mPos = matchStack.length;
 			if (str()) {
 				if (args[0] === true) {
-					matchStack.push(input.slice(tCursor.pos, cursor.pos));
+					matchStack.push(input.slice(tCursor.pos, cursorEndStack[cursorEndStack.length - 1].pos));
 				} else {
 					matchStack.push(matchStack.slice(mPos).join(""));
 				}
@@ -188,6 +189,14 @@ function* parse(input = "") {
 		return false;
 	}
 
+	function matchWhile(str) {
+		while (!cursor.eof) {
+			if (!match(str)) break;
+		}
+
+		return true;
+	}
+
 	function matchScope(strOpen, strClose) {
 		if (!match(strOpen)) return;
 		let lvl = 0;
@@ -204,13 +213,14 @@ function* parse(input = "") {
 	}
 
 	function expect(str, msg = "") {
+		let tCursor = { ...cursor };
 		if (match(str)) {
 			return true;
 		}
 		if (typeof msg === 'string') {
-			throw new GDXError(msg, cursor);
+			throw new GDXError(msg, tCursor);
 		} else if (typeof msg === 'function') {
-			throw new GDXError(msg(), cursor);
+			throw new GDXError(msg(), tCursor);
 		}
 	}
 
@@ -231,6 +241,7 @@ function* parse(input = "") {
 
 			cursor.move(cEnd.pos - 1);
 
+			body.tokenType = "GDX"
 			return body;
 		}
 	}
@@ -253,6 +264,7 @@ function* parse(input = "") {
 					break;
 				}
 				case "SINGLE": {
+					thisTag.children = [];
 					if (tagStack.length === 0) {
 						if (Object.keys(body).length > 0) {
 							throw new GDXError(`Can only return one node`, thisTag.cursor);
@@ -261,6 +273,7 @@ function* parse(input = "") {
 					} else {
 						tagStack[tagStack.length - 1].children.push(thisTag);
 					}
+					break;
 				}
 				case "CLOSE": {
 					if (tagStack.length === 0) {
@@ -268,6 +281,7 @@ function* parse(input = "") {
 					}
 					let parentTag = tagStack.pop();
 					if (parentTag.className === thisTag.className) {
+						parentTag.children = parentTag.children || [];
 						if (tagStack.length === 0) {
 							body = parentTag;
 						} else {
@@ -276,6 +290,16 @@ function* parse(input = "") {
 					} else {
 						throw new GDXError(`This tag is not matching opening tag "${parentTag.className}"`, thisTag.cursor);
 					}
+					break;
+				}
+				case "TEXT": {
+					if (tagStack.length === 0) {
+						throw new GDXError(`Text can only be inside a tag`, thisTag.cursor);
+					}
+
+					let parentTag = tagStack[tagStack.length - 1];
+					parentTag.properties.text = thisTag.text;
+					break;
 				}
 			}
 
@@ -302,6 +326,14 @@ function* parse(input = "") {
 	}
 
 	function tag() {
+		if (T_STRING()) {
+			return {
+				type: "TEXT",
+				text: getStr(-1),
+				cursor: getCursorStart(-1)
+			}
+		}
+
 		expect(() => match("</") || match("<"), `Expected "<" or "</`);
 		const tagStart = getStr(-1);
 		const cursorTagStart = getCursorStart(-1);
@@ -366,11 +398,11 @@ function* parse(input = "") {
 	}
 
 	function T_VALUE() {
-		return T_GDBLOCK() || T_FUNCTION() || T_LITERAL() || T_SYMBOL();
+		return T_GDBLOCK() || T_ACCESSOR() || T_FUNCTION() || T_LITERAL() || T_SYMBOL();
 	}
 
 	function T_SYMBOL() {
-		return match(/(_|[a-z]|[A-Z])(_|[a-z]|[A-Z]|[0-9])*/g);
+		return match(/(_|[a-z]|[A-Z])(_|:|[a-z]|[A-Z]|[0-9])*/g);
 	}
 
 	function T_LITERAL() {
@@ -390,7 +422,25 @@ function* parse(input = "") {
 	}
 
 	function T_STRING() {
+		if (match(/\"\"\"(.|\n)*\"\"\"/g)) {
+			let str = getStr(-1);
+			str = str.slice(2, str.length - 2).replace(/\t/g, "");
+			setStr(-1, str);
+			return true;
+		}
+
 		return match(/\".*?\"|\'.*?\'/g);
+	}
+
+	function T_ACCESSOR() {
+		let any = () => {
+			return T_GDBLOCK() || T_FUNCTION() || T_LITERAL() || T_SYMBOL();
+		}
+
+		return match(() => {
+			return any() && match(".") && expect(any, `Expected value`) &&
+						 matchWhile(() => match(".") && expect(any, `Expected value`))
+		}, true);
 	}
 
 	function T_GDBLOCK() {
@@ -428,30 +478,107 @@ function* parse(input = "") {
 	}
 }
 
-function test(input) {
-	// Convert possible line breaks into single line break
-	input = input.replace(/\r?\n|\r/g, "\n");
+function printTag(tag, indent = 0) {
+	let str = "";
 
-	var start = Date.now();
-	console.log("--start--");
-
-	for (const token of parse(input)) {
-		console.log(token);
+	let tagName = tag.className;
+	if (tag.properties.name !== undefined) {
+		tagName += ` (${tag.properties.name})`;
 	}
 
-	console.log("--finish--");
-	var elapsed = Date.now() - start;
-	console.log(`Parsed in ${elapsed} ms`)
+	str += `${indent > 0 ? "|  ".repeat(indent) : ""}${tagName}`;
+	str += "\n";
+	for (let c of tag.children) {
+		str += printTag(c, indent + 1);
+	}
+
+	return str;
+}
+
+function test(input, desiredTree) {
+	let start = Date.now();
+
+	input = input.replace(/\r?\n|\r/g, "\n");
+
+	let output = [];
+
+	for (const token of parse(input)) {
+		if (token.tokenType === "GDX") {
+			let block = { ...token };
+			delete block.tokenType;
+			output.push(block);
+		}
+	}
+
+	let desiredStr = JSON.stringify(desiredTree);
+	let outputStr = JSON.stringify(output);
+
+	console.log("Desired:\n");
+	console.log(desiredStr);
+	console.log("\nOutput:\n");
+	console.log(outputStr);
+
+	if (desiredStr === outputStr) {
+		return Date.now() - start;
+	}
+
+	return -1;
+}
+
+function listTests() {
+	const testsPath = 'tests';
+
+	fs.readdir(testsPath, 'utf8', (err, files) => {
+		if (err) console.error(err);
+
+		console.log("----Tests start----");
+
+		let numTests = files.length;
+		let testI = 0;
+		let success = 0;
+		let fail = 0;
+		let totalTime = 0;
+
+		console.log(`Number of tests: ${numTests}`);
+
+		files.forEach(file => {
+			const inputStr = fs.readFileSync(path.join(testsPath, file, "input.gdx"), 'utf8');
+			const desiredStr = fs.readFileSync(path.join(testsPath, file, "desired.json"), 'utf8');
+			const desiredJson = JSON.parse(desiredStr);
+			
+			console.log(`\nTest ${testI+1}/${numTests}\n`);
+
+			try {
+				let testTime = test(inputStr, desiredJson);
+				if (testTime >= 0) {
+					console.log(`\nSuccess`);
+					console.log(`Elapsed: ${testTime} ms`);
+					success++;
+					totalTime += testTime;
+				} else {
+					console.log(`\nFail`);
+					fail++;
+				}
+			} catch (e) {
+				if (e instanceof GDXError) {
+					console.log(`\nFail with error: ${e.message}`);
+					fail++;
+				} else {
+					console.error(e);
+				}
+			}
+
+			testI++;
+		});
+
+		console.log(`\nSuccess: ${success} Fails: ${fail}`);
+		console.log(`Total elapsed: ${totalTime} ms`);
+
+		console.log("----Tests end----");
+	});
 }
 
 console.clear();
-fs.readFile('input.txt', 'utf8', (err, data) => {
-	if (err) {
-		console.error(err)
-		return
-	}
-	test(data);
-})
 
-
+listTests();
 

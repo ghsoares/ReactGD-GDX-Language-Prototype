@@ -1,8 +1,0 @@
-(
-	<Label>
-		<Input a=a/>
-		<Input/>
-	</Label>
-)
-
-(<Input/>)
