@@ -284,6 +284,22 @@ function* parse(input = "") {
 		return false;
 	}
 
+	// Class name Lexer
+	function classNameStatement() {
+		if (match("class_name")) {
+			const start = getCursorStart(-1);
+			expect(T_SYMBOL, "Expected name");
+			const className = getStr(-1);
+			const end = getCursorEnd(-1);
+
+			return {
+				tokenType: "CLASSNAME",
+				className,
+				range: [start.pos, end.pos]
+			}
+		}
+	}
+
 	// GDX Lexer
 	function gdxBlock() {
 		let cStart;
@@ -546,7 +562,7 @@ function* parse(input = "") {
 	}
 
 	while (!cursor.eof) {
-		const body = gdxBlock() || importStatement();
+		const body = gdxBlock() || importStatement() || classNameStatement();
 		if (body) yield body;
 		else cursor.walk();
 	}
@@ -612,6 +628,7 @@ function compile() {
 			let input = fs.readFileSync(file, 'utf8').replace(/\r?\n|\r/g, "\n");
 
 			let off = 0;
+			let className = inputFileName;
 
 			try {
 				for (const token of parse(input)) {
@@ -648,8 +665,12 @@ function compile() {
 						const diff = newLen - prevLen;
 
 						off += diff;
+					} else if (token.tokenType === "CLASSNAME") {
+						className = token.className;
 					}
 				}
+
+				input += `\n\nfunc get_component_name() -> String: return "${className}"`
 
 				const outputFolder = path.join(
 					gdOutput, ...folder.split(/\/|\\/g).slice(2)

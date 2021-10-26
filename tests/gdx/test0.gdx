@@ -1,3 +1,6 @@
+extends ReactGDComponent
+class_name Test0
+
 var label = (
 	#Something
 	<Label/>
