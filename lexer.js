@@ -410,7 +410,7 @@ function* parse(input = "") {
 		const tagStart = getStr(-1);
 		const cursorTagStart = getCursorStart(-1);
 		expect(T_SYMBOL, "Expected tag class name");
-		const className = getStr(-1);
+		const className = getStr(-1) === "self" ? "get_script()" : getStr(-1);
 		const properties = tagProperties();
 		const cursorPropertiesStart = getCursorStart(-1);
 		expect(() => match("/>") || match(">"), `Expected ">" or "/>`);
@@ -599,16 +599,16 @@ function stringify(json) {
 }
 
 function compile() {
-	glob("**/*.gdx", function (err, files) {
+	const gdxInput = "tests/gdx";
+	const gdOutput = "tests/gd";
+	glob(path.join(gdxInput, "**/*.gdx"), function (err, files) {
 		if (err) {
 			console.error(err);
 			return;
 		}
-
 		files.forEach(file => {
 			const folder = path.dirname(file);
 			const inputFileName = path.basename(file, '.gdx');
-			const outputPath = path.join(folder, inputFileName + ".gd");
 			let input = fs.readFileSync(file, 'utf8').replace(/\r?\n|\r/g, "\n");
 
 			let off = 0;
@@ -651,6 +651,15 @@ function compile() {
 					}
 				}
 
+				const outputFolder = path.join(
+					gdOutput, ...folder.split(/\/|\\/g).slice(2)
+				);
+				const outputPath = path.join(
+					outputFolder,
+					inputFileName + ".gd"
+				);
+
+				fs.mkdirSync(outputFolder, { recursive: true });
 				fs.writeFileSync(outputPath, input, "utf8");
 			} catch (e) {
 				console.error(e);
@@ -660,15 +669,10 @@ function compile() {
 }
 
 function clear() {
-	glob("**/*.gd", function (err, files) {
-		if (err) {
-			console.error(err);
-			return;
-		}
+	const files = glob.sync("**/*.gd");
 
-		files.forEach(file => {
-			fs.rmSync(file);
-		});
+	files.forEach(file => {
+		fs.rmSync(file);
 	});
 }
 
