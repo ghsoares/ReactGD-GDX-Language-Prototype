@@ -92,8 +92,6 @@ function createCursor(input) {
 			return this;
 		},
 		skipIgnore: function () {
-			let foundComment = false;
-
 			while (this.char === ' '
 				|| this.char === '\n'
 				|| this.char === '\t') this.walk();
@@ -102,7 +100,6 @@ function createCursor(input) {
 				while (!this.eof && this.char !== '\n') {
 					this.walk();
 				}
-				foundComment = true;
 			}
 
 			while (this.char === ' '
@@ -499,8 +496,8 @@ function* parse(input = "") {
 
 	function T_INT() {
 		return match(/[+-]?0x([0-9]|[a-f]|[A-F])+/g)
-			|| match(/[+-]?0b[01]+/g)
-			|| match(/[+-]?[0-9]+/g);
+				|| match(/[+-]?0b[01]+/g)
+				|| match(/[+-]?[0-9]+/g);
 	}
 
 	function T_FLOAT() {

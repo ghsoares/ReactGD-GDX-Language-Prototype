@@ -39,7 +39,21 @@ class ProjectButton:
 		var icon = self.props.icon
 		var title = self.props.title
 
-		return {"id":"AALZ","className":ButtonContainer,"properties":{"style_normal":styles.btn_normal,"style_hover":styles.btn_hover,"style_pressed":styles.btn_pressed,"size_flags_horizontal":Control.SIZE_EXPAND_FILL,"on_pressed":on_pressed},"children":[{"id":"AANe","className":HBoxContainer,"properties":{"anchors_preset":Control.PRESET_WIDE},"children":[{"id":"AAOg","className":TextureRect,"properties":{"texture":icon,"expand":true,"rect_min_size":Vector2(48, 48)},"children":[]},{"id":"AAQj","className":Control,"properties":{"rect_min_size:x":8.0},"children":[]},{"id":"AAQj","className":Label,"properties":{"size_flags_vertical":0,"font_font":fonts.title,"text":title},"children":[]}]}]}
+		return {
+			"id":"AALZ",
+			"className":ButtonContainer,
+			"properties":{
+				"style_normal":styles.btn_normal,
+				"style_hover":styles.btn_hover,
+				"style_pressed":styles.btn_pressed,
+				"size_flags_horizontal":Control.SIZE_EXPAND_FILL,
+				"on_pressed":on_pressed
+			},
+			"children":[{
+				"id":"AANe",
+				"className":HBoxContainer,
+				"properties":{
+					"anchors_preset":Control.PRESET_WIDE},"children":[{"id":"AAOg","className":TextureRect,"properties":{"texture":icon,"expand":true,"rect_min_size":Vector2(48, 48)},"children":[]},{"id":"AAQj","className":Control,"properties":{"rect_min_size:x":8.0},"children":[]},{"id":"AAQj","className":Label,"properties":{"size_flags_vertical":0,"font_font":fonts.title,"text":title},"children":[]}]}]}
 
 const FONTS_PATH := "res://Fonts/JetBrains/fonts/ttf/"
 const DEMOS := [
