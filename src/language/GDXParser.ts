@@ -1,4 +1,4 @@
-import { Cursor, CursorRange, ParseError, Parser } from "./parser";
+import { Cursor, CursorRange, ParseError } from "./parser";
 import {
     FunctionDeclarationToken,
     GDXLexer,
@@ -13,6 +13,7 @@ export interface ParserArgs {
     filePath: string;
     fileBaseName: string;
     folderPath: string;
+    assignId?: boolean;
 }
 
 interface TagParsed {
@@ -57,7 +58,8 @@ function randomId(
     return result;
 }
 
-export class GDXParser extends Parser {
+export class GDXParser {
+    private lexer: GDXLexer;
     private args: ParserArgs;
     private source: string;
     private variables: VariableDeclarationToken[];
@@ -66,14 +68,8 @@ export class GDXParser extends Parser {
     private treeStack: TagParsed[];
     private treeStart: Cursor;
 
-    constructor(
-        lexer: GDXLexer,
-        filePath: string = "Foo.txt",
-        fileBaseName: string = "Foo",
-        folderPath: string = ""
-    ) {
-        super(lexer);
-        this.args = { filePath, fileBaseName, folderPath };
+    constructor(lexer: GDXLexer) {
+        this.lexer = lexer;
     }
 
     parseRange(range: CursorRange, parsed: string) {
@@ -88,8 +84,9 @@ export class GDXParser extends Parser {
         this.off += newLen - prevLen;
     }
 
-    parse(source: string): string {
+    parse(source: string, args: ParserArgs): string {
         this.lexer.setSource(source);
+        this.args = args;
         this.source = source;
 
         this.getDeclarations();
@@ -124,15 +121,6 @@ export class GDXParser extends Parser {
 
                     if (t.type === "SINGLE") {
                         if (this.treeStack.length === 0) {
-                            /*const prefix = source.slice(
-                                0,
-                                off + t.range.start.pos
-                            );
-                            const parsed = this.stringifyTag(functions, node);
-                            const suffix = source.slice(
-                                off + t.range.end.pos + 1
-                            );*/
-
                             this.parseRange(t.range, this.stringifyTag(node));
                         } else {
                             this.treeStack[
@@ -189,39 +177,48 @@ export class GDXParser extends Parser {
     stringifyTag(tag: TagParsed): string {
         let s = "{";
 
-        const id = randomId(
-            4,
-            tag.range.start.line,
-            tag.range.start.column,
-            tag.range.end.line,
-            tag.range.end.column
-        );
+        if (this.args.assignId) {
+            const id = randomId(
+                4,
+                tag.range.start.line,
+                tag.range.start.column,
+                tag.range.end.line,
+                tag.range.end.column
+            );
 
-        s += `"id": "${id}"`;
-        const keyProp = tag.properties.find((p) => p.name === "key");
-        if (keyProp) {
-            s += `+str(${keyProp.value})`;
+            s += `"id":"${id}"`;
+            const keyProp = tag.properties.find((p) => p.name === "key");
+            if (keyProp) {
+                s += `+str(${keyProp.value})`;
+            }
+            s += ",";
         }
-        s += ", ";
-        s += `"className": ${tag.className}, `;
-        s += `"properties": {`;
+
+        let className = tag.className;
+
+        if (className === "self") {
+            className = "get_script()";
+        }
+
+        s += `"className":${className},`;
+        s += `"properties":{`;
         let first = true;
         for (const prop of tag.properties) {
-            if (!first) s += ", ";
+            if (!first) s += ",";
             let value = prop.value;
 
             if (this.functions.find((f) => f.name === value)) {
-                value = `funcref(self, "${value}")`;
+                value = `funcref(self,"${value}")`;
             }
 
-            s += `"${prop.name}": ${value}`;
+            s += `"${prop.name}":${value}`;
             first = false;
         }
-        s += `}, `;
-        s += `"children": [`;
+        s += `},`;
+        s += `"children":[`;
         first = true;
         for (const child of tag.children) {
-            if (!first) s += ", ";
+            if (!first) s += ",";
             s += this.stringifyTag(child);
             first = false;
         }

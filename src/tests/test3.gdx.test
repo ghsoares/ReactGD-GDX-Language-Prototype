@@ -1,0 +1,29 @@
+---Input---
+(
+	<Control>
+		<Label text="Hello World!"/>
+	</Control>
+)
+
+(
+	<HBoxContainer>
+		<VBoxContainer>
+			<PanelContainer size_flags_horizontal={Control.SIZE_EXPAND_FILL}>
+				<Label text="This text is parsed!" />
+			</PanelContainer>
+		</VBoxContainer>
+	</HBoxContainer>
+)
+---Expected---
+(
+	{"className":Control,"properties":{},"children":[{"className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
+)
+
+(
+	{"className":HBoxContainer,"properties":{},"children":[{"className":VBoxContainer,"properties":{},"children":[{"className":PanelContainer,"properties":{"size_flags_horizontal":Control.SIZE_EXPAND_FILL},"children":[{"className":Label,"properties":{"text":"This text is parsed!"},"children":[]}]}]}]}
+)
+
+
+
+
+

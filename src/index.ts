@@ -1,37 +1,78 @@
 console.clear();
 
 import { GDXLexer, GDXParser } from "./language/GDXLanguage";
+import fs from "fs";
+import path from "path";
+import glob from "glob";
+import ChildProcess from "child_process";
+import { ParseError } from "./language/parser";
 
-const source = `extends ReactGDComponent
-import ClickButton from "./clickButton.gdx"
+function test() {
+    glob.glob("**/*.gdx.test", (err, files) => {
+        if (err) throw err;
 
-func on_button_pressed() -> void:
-    pass
+        let numTests = files.length;
+        let tested = 0;
+        let succeeded = 0;
+        let elapsed = 0;
 
-func render():
-    var btn1 = <ClickButton
-        key=i
-        on_pressed=on_button_pressed
-        rect_size={get_button_size()}
-    />
-    var btn2 = <ClickButton children=children/>`;
+        const lexer = new GDXLexer();
+        const parser = new GDXParser(lexer);
 
-const lexer = new GDXLexer();
-const parser = new GDXParser(lexer, "scripts/clicker.gdx", "res://scripts/clicker", "res://scripts/");
+        for (const file of files) {
+            const fileContent = fs.readFileSync(file, "utf8");
+            let [_, input, expected] = fileContent.split(
+                /---Input---|---Expected---/g
+            );
 
-const start = Date.now();
-const parsed = parser.parse(source);
-const elapsed = Date.now() - start;
+            input = input.trim().replace(/\r\n/g, "\n");
+            expected = expected.trim().replace(/\r\n/g, "\n");
 
-console.log(parsed);
-console.log(`${elapsed} ms elapsed`);
-/*lexer.setSource(source);
+            console.log(`----Test ${tested + 1}/${numTests}----`);
+            console.log(`File path: ${file}`);
 
-for (const token of lexer.tokenize()) {
-    if (token.tokenType === "GDXBLOCK") {
-        const t = token as GDXBlockToken;
-        console.log(t.tags[0].properties);
-    }
-}*/
+            try {
+                const folder = path.dirname(file);
+                const baseName = path.basename(file, ".gdx.test");
 
+                const start = Date.now();
+                const parsed = parser.parse(input, {
+                    filePath: file,
+                    fileBaseName: baseName,
+                    folderPath: folder
+                });
+                elapsed += Date.now() - start;
+
+                if (parsed === expected) {
+                    console.log("Successfull");
+                    succeeded++;
+                } else {
+                    console.log(`Failed, opening diff editor...`);
+
+                    const expectedFilePath = file + ".expected";
+                    const outputFilePath = file + ".output";
+                    fs.writeFileSync(expectedFilePath, expected, "utf8");
+                    fs.writeFileSync(outputFilePath, parsed, "utf8");
+                    ChildProcess.exec(`code -d ${expectedFilePath} ${outputFilePath}`);
+                }
+            } catch (e) {
+                if (e instanceof ParseError) {
+                    console.log(`Failed with error`);
+                    console.log(e.stack);
+                }
+            }
+            console.log("");
+            tested++;
+        }
+
+        console.log(`\nSucceeded: ${succeeded}/${numTests}`);
+        console.log(
+            `Total elapsed: ${elapsed} ms, Mean time: ${
+                (elapsed / numTests).toFixed(0)
+            } ms/file`
+        );
+    });
+}
+
+test();
 

@@ -1,6 +1,6 @@
 {
   "watch": ["src"],
-  "ext": "ts,gdx,gd,json",
+  "ext": "ts,gdx.test,json",
   "ignore": ["node_modules"],
   "exec": "ts-node ./src/index.ts"
 }

@@ -1,0 +1,10 @@
+---Input---
+(
+	<Control>
+		<Label text="Hello World!"/>
+	</Control>
+)
+---Expected---
+(
+	{"className":Control,"properties":{},"children":[{"className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
+)

@@ -1,0 +1,16 @@
+---Input---
+extends ReactGDComponent
+
+func render():
+	return (
+		<self
+			indent = {self.props.indent + 1}
+		/>
+	)
+---Expected---
+extends ReactGDComponent
+
+func render():
+	return (
+		{"className":get_script(),"properties":{"indent":self.props.indent + 1},"children":[]}
+	)

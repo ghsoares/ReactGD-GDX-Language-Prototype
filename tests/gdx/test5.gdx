@@ -1,6 +1,0 @@
-extends ReactGDComponent
-
-import AwesomeButton from "./awesomeButton.gdx"
-
-function render():
-	return (<AwesomeButton/>)

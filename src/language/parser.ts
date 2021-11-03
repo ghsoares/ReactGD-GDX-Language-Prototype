@@ -115,6 +115,7 @@ class Match {
     currVal: boolean;
     invertMatch: boolean;
     exceptionMsg: string;
+    optional: boolean;
 
     stringStack: string[];
     rangeStack: CursorRange[];
@@ -125,6 +126,7 @@ class Match {
         this.matching = true;
         this.currVal = false;
         this.invertMatch = false;
+        this.optional = false;
         this.exceptionMsg = "";
 
         this.stringStack = [];
@@ -133,7 +135,13 @@ class Match {
 
     testException() {
         if (this.exceptionMsg !== "" && !this.currVal) {
-            throw new ParseError(this.exceptionMsg, this.cursor);
+            let s = "";
+            while (!this.cursor.eof) {
+                if (this.cursor.char === "\n" || this.cursor.char === " " || this.cursor.char === "\t") break;
+                s += this.cursor.char;
+                this.cursor.walk();
+            }
+            throw new ParseError(`Unexpected token "${s}": ${this.exceptionMsg}`, this.cursor);
         }
         this.exceptionMsg = "";
     }
@@ -154,12 +162,15 @@ class Match {
 }
 
 class ParseError extends Error {
+    cursor: Cursor;
+
     constructor(message: string, cursor: Cursor) {
         super(
             `Parse error at line ${cursor.line + 1} column ${
                 cursor.column + 1
             }: ${message}`
         );
+        this.cursor = cursor;
     }
 }
 
@@ -253,10 +264,11 @@ class Lexer {
         stack[pos] = { start: startCursor, end: endCursor };
     }
 
-    openMatch(): void {
+    openMatch(optional: boolean = false): void {
         this.matchStack.push(this.currentMatch);
         this.currentMatch.cursor.skipIgnore();
-        this.currentMatch = new Match(this.currentMatch.cursor);
+        this.currentMatch = new Match({ ...this.currentMatch.cursor });
+        this.currentMatch.optional = optional;
     }
 
     and(): this {
@@ -372,7 +384,7 @@ class Lexer {
         return this.currentMatch.currVal;
     }
 
-    closeMatch(): void {
+    closeMatch(returnCursor: boolean = true): void {
         if (this.matchStack.length === 0) {
             throw new Error("Closing more matches than opening");
         }
@@ -381,10 +393,10 @@ class Lexer {
         this.currentMatch = this.matchStack.pop();
 
         if (this.currentMatch.matching) {
-            this.currentMatch.currVal = prevMatch.currVal;
+            this.currentMatch.currVal = prevMatch.currVal || prevMatch.optional;
             this.currentMatch.testException();
 
-            if (prevMatch.currVal) {
+            if (prevMatch.currVal || prevMatch.optional) {
                 this.currentMatch.cursor.move(prevMatch.cursor.pos);
 
                 this.currentMatch.pushStringStack(...prevMatch.stringStack);
@@ -409,7 +421,9 @@ class Lexer {
             if (this.matchStack.length > 0) {
                 throw new Error("Not closing all opened matches!");
             }
-            if (token) yield token;
+            if (token) {
+                yield token;
+            }
             else this.currentMatch.cursor.walk();
         }
     }
@@ -420,16 +434,4 @@ class Lexer {
     }
 }
 
-class Parser {
-    protected readonly lexer: Lexer;
-
-    constructor(lexer: Lexer) {
-        this.lexer = lexer;
-    }
-
-    parse(source: string): string {
-        return source;
-    }
-}
-
-export { Lexer, Parser, Cursor, CursorRange, Token, createCursor, ParseError };
+export { Lexer, Cursor, CursorRange, Token, createCursor, ParseError };

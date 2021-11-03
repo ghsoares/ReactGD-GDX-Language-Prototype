@@ -4,7 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    
     "dev": "doskey /listsize=0 && nodemon"
   },
   "keywords": [],
@@ -14,6 +13,7 @@
     "glob": "^7.2.0"
   },
   "devDependencies": {
+    "@types/glob": "^7.2.0",
     "@types/node": "^16.11.6",
     "nodemon": "^2.0.14",
     "ts-node": "^10.4.0",

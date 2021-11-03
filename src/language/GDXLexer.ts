@@ -91,12 +91,12 @@ export class GDXLexer extends Lexer {
             const start = this.getRange(-2).start;
             let type = "any";
             let initialValue = "";
-            this.openMatch();
+            this.openMatch(true);
             if (this.match(":").and().T_SYMBOL().foundMatch()) {
                 type = this.getStr(-1);
             }
             this.closeMatch();
-            this.openMatch();
+            this.openMatch(true);
             if (this.match("=").and().T_LITERAL().foundMatch()) {
                 initialValue = this.getStr(-1);
             }
@@ -149,7 +149,7 @@ export class GDXLexer extends Lexer {
 
             let returnType = "any";
 
-            this.openMatch();
+            this.openMatch(true);
             if (this.match("->").and().T_SYMBOL().foundMatch()) {
                 returnType = this.getStr(-1);
             }
@@ -211,16 +211,19 @@ export class GDXLexer extends Lexer {
                 if (tagClose === ">") {
                     tagType = "CLOSE";
                 } else {
-                    throw new ParseError(`Can't end closing tag with "/>"`, tagCloseStart);
+                    throw new ParseError(
+                        `Can't end closing tag with "/>"`,
+                        tagCloseStart
+                    );
                 }
             }
 
             token = {
                 tokenType: "TAG",
-                range: {start, end},
+                range: { start, end },
                 type: tagType,
                 className,
-                properties: props
+                properties: props,
             };
         }
 
@@ -229,7 +232,7 @@ export class GDXLexer extends Lexer {
     }
 
     tagProperties(): TagProperty[] {
-        this.openMatch();
+        this.openMatch(true);
 
         const props: TagProperty[] = [];
 
@@ -240,18 +243,25 @@ export class GDXLexer extends Lexer {
             if (this.foundMatch()) {
                 const propName = this.getStr(-3);
                 const start = this.getRange(-3).start;
-                
+
                 this.openMatch();
-                this.T_LITERAL().or().T_SYMBOL().or().T_GDBLOCK().expectPrev(`Expected value`);
+                this.T_LITERAL()
+                    .or()
+                    .T_FUNCTION()
+                    .or()
+                    .T_SYMBOL()
+                    .or()
+                    .T_GDBLOCK()
+                    .expectPrev(`Expected value`);
                 this.closeMatch();
-                
+
                 const propValue = this.getStr(-2);
                 const end = this.getRange(-2).end;
                 props.push({
                     tokenType: "TAGPROPERTY",
-                    range: {start, end},
+                    range: { start, end },
                     name: propName,
-                    value: propValue
+                    value: propValue,
                 });
             } else break;
         }
@@ -264,9 +274,9 @@ export class GDXLexer extends Lexer {
     // TOKENS
     T_SYMBOL(prop: boolean = false): this {
         if (prop) {
-            this.match(/(_|[a-z]|[A-Z])(_|:|[a-z]|[A-Z]|[0-9])*/g);
+            this.match(/(_|[a-z]|[A-Z])(_|:|\.|[a-z]|[A-Z]|[0-9])*/g);
         } else {
-            this.match(/(_|[a-z]|[A-Z])(_|[a-z]|[A-Z]|[0-9])*/g);
+            this.match(/(_|[a-z]|[A-Z])(_|\.|[a-z]|[A-Z]|[0-9])*/g);
         }
 
         return this;
@@ -367,6 +377,39 @@ export class GDXLexer extends Lexer {
             this.setRange(-1, r.start.pos + 1, r.end.pos - 1);
         }
 
+        return this;
+    }
+
+    T_FUNCTION(): this {
+        this.openMatch();
+
+        this.T_SYMBOL().and().match("(");
+        if (this.foundMatch()) {
+            let i = 0;
+            while (!this.currentMatch.cursor.eof) {
+                if (i % 2 === 0) {
+                    this.openMatch();
+                    this.T_LITERAL()
+                        .or()
+                        .T_FUNCTION()
+                        .or()
+                        .T_SYMBOL()
+                        .or()
+                        .T_GDBLOCK();
+                    if (i > 0) {
+                        this.expectPrev(`Expected value`);
+                    }
+                    this.closeMatch();
+                    if (!this.foundMatch()) break;
+                } else {
+                    if (!this.match(",").foundMatch()) break;
+                }
+                i++;
+            }
+            this.expectNext(`Expected ")"`).match(")");
+        }
+
+        this.closeMatch();
         return this;
     }
 }

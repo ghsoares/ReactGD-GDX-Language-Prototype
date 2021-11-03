@@ -1,0 +1,16 @@
+---Input---
+extends ReactGDComponent
+class_name Test0
+
+var label = (
+	#Comments are included on parsed file!
+	<Label/>
+)
+---Expected---
+extends ReactGDComponent
+class_name Test0
+
+var label = (
+	#Comments are included on parsed file!
+	{"className":Label,"properties":{},"children":[]}
+)
