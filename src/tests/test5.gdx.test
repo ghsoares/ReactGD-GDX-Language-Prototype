@@ -11,4 +11,4 @@ extends ReactGDComponent
 var AwesomeButton = ResourceLoader.load("src\tests\awesomeButton.gdx")
 
 function render():
-	return ({"className":AwesomeButton,"properties":{},"children":[]})
+	return (create_node(AwesomeButton, {}, []))

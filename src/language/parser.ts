@@ -5,7 +5,7 @@ interface Cursor {
     char: string;
     line: number;
     column: number;
-    indent: number;
+    indent: string;
     indenting: boolean;
     eof: boolean;
     lineBreak: boolean;
@@ -35,7 +35,7 @@ function createCursor(input: string): Cursor {
         char: input[0],
         line: 0,
         column: 0,
-        indent: 0,
+        indent: "",
         indenting: true,
         eof: false,
         lineBreak: false,
@@ -52,12 +52,14 @@ function createCursor(input: string): Cursor {
             this.eof = this.char === undefined;
             this.lineBreak = this.char === "\n";
             if (this.indenting) {
-                if (this.char === "\t" || this.char === " ") this.indent++;
+                if (this.char === "\t" || this.char === " ") {
+                    this.indent += this.char;
+                }
                 else this.indenting = false;
             }
             if (this.lineBreak) {
                 this.indenting = true;
-                this.indent = 0;
+                this.indent = "";
             }
         },
         walkTimes: function (times: number) {

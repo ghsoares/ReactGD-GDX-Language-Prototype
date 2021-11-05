@@ -12,5 +12,7 @@ extends ReactGDComponent
 
 func render():
 	return (
-		{"className":get_script(),"properties":{"indent":self.props.indent + 1},"children":[]}
+		create_node(get_script(), {
+			"indent": self.props.indent + 1}, [
+		])
 	)

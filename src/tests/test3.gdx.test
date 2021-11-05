@@ -16,11 +16,19 @@
 )
 ---Expected---
 (
-	{"className":Control,"properties":{},"children":[{"className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
+	create_node(Control, {}, [
+		create_node(Label, {"text": "Hello World!"}, [])
+	])
 )
 
 (
-	{"className":HBoxContainer,"properties":{},"children":[{"className":VBoxContainer,"properties":{},"children":[{"className":PanelContainer,"properties":{"size_flags_horizontal":Control.SIZE_EXPAND_FILL},"children":[{"className":Label,"properties":{"text":"This text is parsed!"},"children":[]}]}]}]}
+	create_node(HBoxContainer, {}, [
+		create_node(VBoxContainer, {}, [
+			create_node(PanelContainer, {"size_flags_horizontal": Control.SIZE_EXPAND_FILL}, [
+				create_node(Label, {"text": "This text is parsed!"}, [])
+			])
+		])
+	])
 )
 
 

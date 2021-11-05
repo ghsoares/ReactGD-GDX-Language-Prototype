@@ -1,10 +1,16 @@
 ---Input---
 (
 	<Control>
-		<Label text="Hello World!"/>
+		<Label
+			text="Hello World!"
+		/>
 	</Control>
 )
 ---Expected---
 (
-	{"className":Control,"properties":{},"children":[{"className":Label,"properties":{"text":"Hello World!"},"children":[]}]}
+	create_node(Control, {}, [
+		create_node(Label, {
+			"text": "Hello World!"}, [
+		])
+	])
 )

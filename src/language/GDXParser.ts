@@ -140,12 +140,41 @@ export class GDXParser {
                             );
                         }
                         const parent = this.treeStack.pop();
+
+                        const betweenStart = parent.range.end.pos;
+                        const betweenEnd = t.range.start.pos;
+                        const str = source
+                            .slice(betweenStart + 1, betweenEnd)
+                            .replace(/\n|\t/g, "")
+                            .trim();
+                        if (str !== "" && parent.children.length === 0) {
+                            const props = parent.properties;
+                            let textProp: TagProperty = null;
+                            if (
+                                (textProp = props.find(
+                                    (p) => p.name === "text"
+                                ))
+                            ) {
+                                textProp.value += `+"${str}"`;
+                            } else {
+                                const lastRange = props[props.length - 1].range;
+                                textProp = {
+                                    tokenType: "TAGPROPERTY",
+                                    range: lastRange,
+                                    name: "text",
+                                    value: `"${str}"`,
+                                };
+                                props.push(textProp);
+                            }
+                        }
+
                         if (parent.className !== node.className) {
                             throw new ParseError(
                                 `This tag don't match with parent tag "${parent.className}"`,
                                 t.range.start
                             );
                         }
+                        parent.range.end = t.range.end;
 
                         if (this.treeStack.length === 0) {
                             this.parseRange(
@@ -175,60 +204,73 @@ export class GDXParser {
     }
 
     stringifyTag(tag: TagParsed): string {
-        let s = "{";
-
-        if (this.args.assignId) {
-            const id = randomId(
-                4,
-                tag.range.start.line,
-                tag.range.start.column,
-                tag.range.end.line,
-                tag.range.end.column
-            );
-
-            s += `"id":"${id}"`;
-            const keyProp = tag.properties.find((p) => p.name === "key");
-            if (keyProp) {
-                s += `+str(${keyProp.value})`;
-            }
-            s += ",";
-        }
-
+        let s = "";
+        let l = tag.range.start.line;
         let className = tag.className;
 
         if (className === "self") {
             className = "get_script()";
         }
 
-        s += `"className":${className},`;
-        s += `"properties":{`;
-        let first = true;
-        for (const prop of tag.properties) {
-            if (!first) s += ",";
-            let value = prop.value;
+        s += `create_node(${className}, {`;
 
-            if (this.functions.find((f) => f.name === value)) {
-                value = `funcref(self,"${value}")`;
+        if (tag.properties.length > 0) {
+            let first = true;
+            for (const p of tag.properties) {
+                let d = p.range.start.line - l;
+                if (!first) s += ",";
+                if (d > 0) {
+                    while (d > 0) {
+                        s += "\n";
+                        d--;
+                        l++;
+                    }
+                    s += p.range.start.indent;
+                }
+
+                let val = p.value;
+                if (this.functions.find((f) => f.name === val)) {
+                    val = `funcref(self, "${val}")`;
+                }
+
+                s += `"${p.name}": ${val}`;
+                l = p.range.end.line;
+                first = false;
             }
-
-            s += `"${prop.name}":${value}`;
-            first = false;
-        }
-        s += `},`;
-        s += `"children":[`;
-        first = true;
-        for (const child of tag.children) {
-            if (!first) s += ",";
-            s += this.stringifyTag(child);
-            first = false;
-        }
-        s += `]`;
-        const childrenProp = tag.properties.find((p) => p.name === "children");
-        if (childrenProp) {
-            s += `+${childrenProp.name}`;
         }
 
-        s += "}";
+        s += "}, [";
+        if (tag.children.length > 0) {
+            let first = true;
+            for (const c of tag.children) {
+                let d = c.range.start.line - l;
+                if (!first) s += ",";
+                if (d > 0) {
+                    while (d > 0) {
+                        s += "\n";
+                        d--;
+                    }
+                    s += c.range.start.indent;
+                }
+                const ss = this.stringifyTag(c);
+                l = c.range.end.line;
+                s += ss;
+                first = false;
+            }
+        }
+        let d = tag.range.end.line - l;
+        if (d > 0) {
+            while (d > 0) {
+                s += "\n";
+                d--;
+                l++;
+            }
+            s += tag.range.end.indent;
+        }
+
+        s += "]";
+        s += ")";
+
         return s;
     }
 

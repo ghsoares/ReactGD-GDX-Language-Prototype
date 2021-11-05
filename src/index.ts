@@ -3,11 +3,18 @@ console.clear();
 import { GDXLexer, GDXParser } from "./language/GDXLanguage";
 import fs from "fs";
 import path from "path";
-import glob from "glob";
+import glob, { GlobSync } from "glob";
 import ChildProcess from "child_process";
 import { ParseError } from "./language/parser";
 
 function test() {
+    glob.sync("**/*.gdx.test.expected").forEach(file => {
+        fs.rmSync(file);
+    });
+    glob.sync("**/*.gdx.test.output").forEach(file => {
+        fs.rmSync(file);
+    });
+
     glob.glob("**/*.gdx.test", (err, files) => {
         if (err) throw err;
 
@@ -36,6 +43,7 @@ function test() {
                 const baseName = path.basename(file, ".gdx.test");
 
                 const start = Date.now();
+                
                 const parsed = parser.parse(input, {
                     filePath: file,
                     fileBaseName: baseName,
@@ -56,10 +64,8 @@ function test() {
                     ChildProcess.exec(`code -d ${expectedFilePath} ${outputFilePath}`);
                 }
             } catch (e) {
-                if (e instanceof ParseError) {
-                    console.log(`Failed with error`);
-                    console.log(e.stack);
-                }
+                console.log(`Failed with error`);
+                console.log(e.stack);
             }
             console.log("");
             tested++;

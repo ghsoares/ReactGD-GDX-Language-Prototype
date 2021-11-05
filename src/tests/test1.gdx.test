@@ -1,4 +1,4 @@
 ---Input---
 (<Label></Label>)
 ---Expected---
-({"className":Label,"properties":{},"children":[]})
+(create_node(Label, {}, []))
